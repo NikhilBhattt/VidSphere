@@ -1,10 +1,10 @@
 import mongoose from "mongoose";
-import Video from "../models/video.model";
-import ApiError from "../utils/ApiError";
-import ApiResponse from "../utils/ApiResponse";
-import { asyncHandler } from "../utils/asyncHandler";
-import { Like } from "../models/like.model";
-import { Comment } from "../models/comment.model";
+import Video from "../models/video.model.js";
+import ApiError from "../utils/ApiError.js";
+import ApiResponse from "../utils/ApiResponse.js";
+import { asyncHandler } from "../utils/asyncHandler.js";
+import { Like } from "../models/like.model.js";
+import { Comment } from "../models/comment.model.js";
 
 const getAllVideos = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, userId } = req.query;
@@ -75,3 +75,13 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
   });
   return new ApiResponse(200, {}, "Successfully Updated!");
 });
+
+
+export {
+  getAllVideos,
+  publishAVideo,
+  getVideoById,
+  updateVideo,
+  deleteVideo,
+  togglePublishStatus
+}

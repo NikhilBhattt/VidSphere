@@ -5,7 +5,6 @@ import express from "express";
 import cors from "cors";
 import { rateLimit } from "express-rate-limit";
 import cookieParser from "cookie-parser";
-import { router as userRouter } from "../routes/user.routes.js";
 
 const app = express();
 
@@ -23,12 +22,18 @@ app.use(
     credentials: true,
   }),
 );
-app.use(express.json({ limit: "10kb" }));
+app.use(express.json({ limit: "16kb" }));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 app.use(cookieParser());
 
-// routes
-app.use("/api/v1/user", userRouter);
+// Routes
+import { router as userRouter } from "../routes/user.routes.js";
+import { router as videoRouter } from "../routes/video.routes.js";
+import { router as subscriptionRouter } from "../routes/subscription.routes.js";
+
+app.use("/api/v1/u", userRouter);
+app.use("/api/v1/v", videoRouter);
+app.use("/api/v1/s", subscriptionRouter);
 
 export default app;
