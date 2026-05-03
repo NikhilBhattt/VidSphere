@@ -1,10 +1,36 @@
 import mongoose from "mongoose";
-import Video from "../models/video.model.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { User } from "../models/user.model.js";
+import { Video } from "../models/video.model.js";
 import { Like } from "../models/like.model.js";
 import { Comment } from "../models/comment.model.js";
+import { WatchHistory } from "../models/watchHistory.model.js";
+
+const watchVideo = asyncHandler(async (req, res) => {
+  const { videoId } = req.params;
+
+  if (!mongoose.isValidObjectId(videoId)) {
+    return res.status(404).json(new ApiError(404, "Invalid Video Id"));
+  }
+
+  const video = await Video.findById(videoId);
+
+  if (!video) {
+    return res.status(204).json(new ApiResponse(204, "Video not available"));
+  }
+
+  video.view += 1;
+  await video.save();
+
+  await WatchHistory.findOneAndUpdate(req.user._id, {
+    videos: {
+      $push: videoId,
+    },
+  });
+  return res.status(200).json(new ApiResponse(200, {}, "User started watching"));
+});
 
 const getAllVideos = asyncHandler(async (req, res) => {
   const { page = 1, limit = 10, userId } = req.query;
@@ -76,12 +102,11 @@ const togglePublishStatus = asyncHandler(async (req, res) => {
   return new ApiResponse(200, {}, "Successfully Updated!");
 });
 
-
 export {
   getAllVideos,
   publishAVideo,
   getVideoById,
   updateVideo,
   deleteVideo,
-  togglePublishStatus
-}
+  togglePublishStatus,
+};
