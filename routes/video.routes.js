@@ -8,19 +8,20 @@ import {
   updateVideo,
 } from "../controllers/video.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
+import upload from "../middlewares/multer.middleware.js";
 
 const router = Router();
 
-router.get("/all-videos", verifyJWT, getAllVideos);
+router.get("/videos", verifyJWT, getAllVideos);
 
-router.post("/video", verifyJWT, publishAVideo); // cloudinary & multer
+router.post("/video", verifyJWT, upload.single("video"), publishAVideo);
 
-router.get("/video/:videoId", verifyJWT, getVideoById);
+router.get("/:videoId", verifyJWT, getVideoById);
 
-router.put("/video/:videoId", verifyJWT, updateVideo);
+router.put("/:videoId", verifyJWT, updateVideo);
 
-router.delete("/video/:videoId", verifyJWT, deleteVideo);
+router.delete("/:videoId", verifyJWT, deleteVideo);
 
-router.get("video/toggle/:videoId", verifyJWT, togglePublishStatus);
+router.patch("/toggle/:videoId", verifyJWT, togglePublishStatus);
 
-export default router;
+export { router };

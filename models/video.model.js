@@ -6,21 +6,17 @@ const videoSchema = new Schema({
     type: String,
     required: [true, "Video File is required"],
   },
-  thumbnail: {
-    type: String,
-    required: true
-  },
   owner: {
     type: Schema.Types.ObjectId,
     ref: "User",
   },
   title: {
     type: String,
-    required: true
+    required: true,
   },
   description: {
     type: String,
-    required: true
+    required: true,
   },
   views: {
     type: Number,
@@ -35,6 +31,8 @@ const videoSchema = new Schema({
   },
 });
 
-videoSchema.plugin(mongooseAggregatePaginate)
+videoSchema.index({ owner: 1 });
+
+videoSchema.plugin(mongooseAggregatePaginate);
 
 export const Video = mongoose.model("Video", videoSchema);
