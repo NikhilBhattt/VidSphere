@@ -19,4 +19,4 @@ router.get(
   getSubscribedChannels,
 );
 
-export { router };
+export default router ;

@@ -24,4 +24,4 @@ router.delete("/:videoId", verifyJWT, deleteVideo);
 
 router.patch("/toggle/:videoId", verifyJWT, togglePublishStatus);
 
-export { router };
+export default router;

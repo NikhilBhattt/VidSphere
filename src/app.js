@@ -28,12 +28,16 @@ app.use(express.static("public"));
 app.use(cookieParser());
 
 // Routes
-import { router as userRouter } from "../routes/user.routes.js";
-import { router as videoRouter } from "../routes/video.routes.js";
-import { router as subscriptionRouter } from "../routes/subscription.routes.js";
+import userRouter from "../routes/user.routes.js";
+import videoRouter from "../routes/video.routes.js";
+import subscriptionRouter from "../routes/subscription.routes.js";
+import commentRouter from "../routes/comment.routes.js";
+import LikeRouter from "../routes/like.routes.js";
 
-app.use("/api/v1/u", userRouter);
-app.use("/api/v1/v", videoRouter);
-app.use("/api/v1/s", subscriptionRouter);
+app.use("/api/v1/user", userRouter);
+app.use("/api/v1/video", videoRouter);
+app.use("/api/v1/subscription", subscriptionRouter);
+app.use("/api/v1/comment", commentRouter);
+app.use("/api/v1/like", LikeRouter);
 
 export default app;
