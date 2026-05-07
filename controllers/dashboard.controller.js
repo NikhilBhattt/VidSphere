@@ -24,7 +24,7 @@ const getChannelStats = asyncHandler(async (req, res) => {
             $sum: "$views",
           },
           totalVideos: {
-            $sum: 1,
+            $count: 1,
           },
         },
       },
@@ -123,7 +123,8 @@ const getChannelVideos = asyncHandler(async (req, res) => {
     owner: new mongoose.Types.ObjectId(req.user._id),
   })
     .skip(skip)
-    .limit(limit);
+    .limit(limit)
+    .lean();
 
   if (!channelVideos) {
     return res

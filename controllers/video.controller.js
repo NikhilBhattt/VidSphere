@@ -9,6 +9,7 @@ import { Comment } from "../models/comment.model.js";
 import { WatchHistory } from "../models/watchHistory.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 
+
 const watchVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
@@ -19,17 +20,16 @@ const watchVideo = asyncHandler(async (req, res) => {
   const video = await Video.findById(videoId);
 
   if (!video) {
-    return res.status(204).json(new ApiResponse(204, "Video not available"));
+    return res.status(404).json(new ApiError(404, "Video not found!"));
   }
 
-  video.view += 1;
-  await video.save();
+  await Video.updateOne({ _id: videoId }, { $inc: { view: 1 } });
 
-  await WatchHistory.findOneAndUpdate(req.user._id, {
-    videos: {
-      $push: videoId,
-    },
-  });
+  await WatchHistory.findByIdAndUpdate(
+    req.user._id,
+    { $addToSet: { videos: videoId } },
+    { upsert: true, new: true },
+  );
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "User started watching"));
@@ -110,11 +110,15 @@ const publishAVideo = asyncHandler(async (req, res) => {
 const getVideoById = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
-  const video = await Video.findById(videoId);
+  if (mongoose.isValidObjectId(videoId)) {
+    return res.status(404).json(new ApiError(404, "Video not found!"));
+  }
+
+  const video = await Video.findById(videoId).lean();
   if (!video) {
     return new ApiError(404, "Video Not Found!");
   }
-  return new ApiResponse(200, video);
+  return new ApiResponse(200, video, "Video found!");
 });
 
 const updateVideo = asyncHandler(async (req, res) => {
@@ -125,11 +129,17 @@ const updateVideo = asyncHandler(async (req, res) => {
 const deleteVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
+  if (mongoose.isValidObjectId(videoId)) {
+    return res.status(404).json(new ApiError(404, "Video not found!"));
+  }
+
   await Promise.all([
     Video.deleteOne({ _id: mongoose.Types.ObjectId(videoId) }),
     Like.deleteMany({ videoId: mongoose.Types.ObjectId(videoId) }),
     Comment.deleteMany({ videoId: mongoose.Types.ObjectId(videoId) }),
   ]);
+
+  return res.status(200).json(new ApiResponse(200, {}, "Video deleted!"));
 });
 
 const togglePublishStatus = asyncHandler(async (req, res) => {
