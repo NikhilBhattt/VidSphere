@@ -7,8 +7,24 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 
+import { client } from "../services/redis.service.js";
+
 const getChannelStats = asyncHandler(async (req, res) => {
-  // TODO: Get the channel stats like total video views, total subscribers, total videos, total likes etc.
+  const cacheKey = `channelStats:${req.user._id}`;
+
+  const cachedData = await client.get(cacheKey);
+
+  if (cachedData) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          JSON.parse(cachedData),
+          "Data fetched from cache!",
+        ),
+      );
+  }
 
   const result = await Promise.all([
     Video.aggregate([
@@ -99,18 +115,20 @@ const getChannelStats = asyncHandler(async (req, res) => {
   }
 
   const [totalVideosAndView, totalSubscribers, totalLikes] = result;
+  const data = {
+    totalVideosAndView: totalVideosAndView[0] || {
+      totalVideoViews: 0,
+      totalVideos: 0,
+    },
+    totalSubscribers: totalSubscribers[0] || { totalSubscribers: 0 },
+    totalLikes: totalLikes[0] || { totalLikes: 0 },
+  };
 
-  return res.status(200).json(
-    new ApiResponse(
-      200,
-      {
-        totalVideosAndView,
-        totalSubscribers,
-        totalLikes,
-      },
-      "Data fetched!",
-    ),
-  );
+  // Store the fetched data in Redis cache
+
+  await client.set(cacheKey, JSON.stringify(data), { EX: 1800 }); // Cache for 30 minutes
+
+  return res.status(200).json(new ApiResponse(200, data, "Data fetched!"));
 });
 
 const getChannelVideos = asyncHandler(async (req, res) => {

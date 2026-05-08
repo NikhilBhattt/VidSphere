@@ -9,6 +9,13 @@ import { Comment } from "../models/comment.model.js";
 import { WatchHistory } from "../models/watchHistory.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 
+// where i should use Redis?
+
+// 1. profile fetch
+// 2. channel stats - Done
+// 4. channels subscribed - Done
+// 5. watchHistory - Done
+// 6. getAllVideos - Done
 
 const watchVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
@@ -36,14 +43,33 @@ const watchVideo = asyncHandler(async (req, res) => {
 });
 
 const getAllVideos = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 10, userId } = req.query;
+  // get videos of a channel with pagination
+
+  const { channelId } = req.params;
+  const { page = 1, limit = 10 } = req.query;
 
   const skip = (page - 1) * limit;
 
-  const [allVideos, totalVideos] = await Promise.all([
+  const cacheKey = `channelVideos:${channelId}:page:${page}:limit:${limit}`;
+
+  const cachedData = await client.get(cacheKey);
+
+  if (cachedData) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          JSON.parse(cachedData),
+          "Channel's Videos Fetched!",
+        ),
+      );
+  }
+
+  const result = await Promise.all([
     Video.aggregate([
       {
-        $match: { owner: mongoose.Types.ObjectId(userId) },
+        $match: { owner: new mongoose.Types.ObjectId(channelId) },
       },
       {
         $skip: skip,
@@ -52,18 +78,30 @@ const getAllVideos = asyncHandler(async (req, res) => {
         $limit: limit,
       },
     ]),
-    Video.countDocuments({ owner: mongoose.Types.ObjectId(userId) }),
+    Video.countDocuments({ owner: new mongoose.Types.ObjectId(channelId) }),
   ]);
 
-  if (!allVideos || !totalVideos) {
-    return new ApiError(404, "No Videos found");
+  if (result.length === 0) {
+    return res.status(404).json(new ApiError(404, "No Videos found"));
   }
 
-  return new ApiResponse(
-    200,
-    { allVideos, totalVideos },
-    "User's Videos Fetched!",
-  );
+  const [allVideos, totalVideos] = result;
+
+  const data = {
+    allVideos,
+    totalVideos,
+    paginate: {
+      page: parseInt(page),
+      limit: parseInt(limit),
+      totalPages: Math.ceil(totalVideos / limit),
+    },
+  };
+
+  await client.set(cacheKey, JSON.stringify(data), { EX: 120 }); // Cache for 2 minutes
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, data, "Channel's Videos Fetched!"));
 });
 
 const publishAVideo = asyncHandler(async (req, res) => {

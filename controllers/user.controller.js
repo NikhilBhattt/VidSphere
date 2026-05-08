@@ -6,6 +6,7 @@ import ApiResponse from "../utils/ApiResponse.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { cookiesOption } from "../src/constants.js";
 import mongoose, { Schema } from "mongoose";
+import { client } from "../services/redis.service.js";
 
 const registerUser = asyncHandler(async (req, res) => {
   // get user details
@@ -257,11 +258,27 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 const getUserChannelProfile = asyncHandler(async (req, res) => {
   const { username } = req.params;
 
-  if (!username?.trim()) {
-    throw new ApiError(422, "Username is missing!");
+  if (!mongoose.isValidObjectId(username)) {
+    return res.status(404).json(new ApiError(404, "Username is missing!"));
   }
 
-  const [channel] = await User.aggregate([
+  const cacheKey = `channel_profile:${username.toLowerCase()}`;
+
+  const cachedData = await client.get(cacheKey);
+
+  if (cachedData) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          JSON.parse(cachedData),
+          "Channel profile fetched from cache!",
+        ),
+      );
+  }
+
+  const result = await User.aggregate([
     {
       $match: { username: username.toLowerCase() },
     },
@@ -330,9 +347,13 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     },
   ]);
 
-  if (!channel) {
-    throw new ApiError(404, "Channel doesn't exists!");
+  if (result.length === 0) {
+    return res.status(404).json(new ApiError(404, "Channel doesn't exists!"));
   }
+
+  const channel = result[0];
+
+  await client.set(cacheKey, JSON.stringify(channel), { EX: 900 }); // Cache for 15 minutes
 
   return res
     .status(200)
@@ -340,9 +361,25 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
 });
 
 const getWatchHistory = asyncHandler(async (req, res) => {
+  const cacheKey = `watch_history:${req.user._id}`;
+
+  const cachedData = await client.get(cacheKey);
+
+  if (cachedData) {
+    return res
+      .status(200)
+      .json(
+        new ApiResponse(
+          200,
+          JSON.parse(cachedData),
+          "Watch history fetched from cache!",
+        ),
+      );
+  }
+
   const [watchHistory] = await WatchHistory.aggregate([
     {
-      $match: { userId: 1 },
+      $match: { userId: new mongoose.Types.ObjectId(req.user._id) },
     },
     { $unwind: "$videos" },
     {
@@ -372,6 +409,8 @@ const getWatchHistory = asyncHandler(async (req, res) => {
   if (!watchHistory) {
     throw new ApiError(404, "Data not found!");
   }
+
+  await client.set(cacheKey, JSON.stringify(watchHistory), { EX: 600 }); // Cache for 10 minutes
 
   return res
     .status(200)
