@@ -5,13 +5,17 @@ import { connectRedis } from "../services/redis.service.js";
 
 const port = process.env.PORT || 3000;
 
-// databae connect
-connectDB();
+(async () => {
+  try {
+    // Connect to database and Redis
+    await Promise.all([connectDB(), connectRedis()]);
 
-// redis connect
-connectRedis();
-
-// server start
-app.listen(port, () => {
-  console.log(`Server listening on port ${port}`);
-});
+    // Start the server
+    app.listen(port, () => {
+      console.log(`Server listening on port ${port}`);
+    });
+  } catch (error) {
+    console.error("Failed to initialize application:", error);
+    process.exit(1);
+  }
+})();
