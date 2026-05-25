@@ -1,10 +1,9 @@
-import dotenv from "dotenv";
-dotenv.config();
-
 import express from "express";
 import cors from "cors";
 import { rateLimit } from "express-rate-limit";
 import cookieParser from "cookie-parser";
+
+import config from "../config/config.js";
 
 const app = express();
 
@@ -18,7 +17,7 @@ app.use(limiter);
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGINS,
+    origin: config.CORS_ORIGINS,
     credentials: true,
   }),
 );

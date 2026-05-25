@@ -1,9 +1,11 @@
 import mongoose from "mongoose";
 import { DB_NAME } from "../src/constants.js";
 
+import config from "../config/config.js";
+
 const connectDB = async () => {
   try {
-    await mongoose.connect(`${process.env.MONGODB_URI}/${DB_NAME}`);
+    await mongoose.connect(`${config.MONGODB_URI}/${DB_NAME}`);
     console.log("MongoDb connected!");
   } catch (error) {
     console.log("MongoDb connection failed!!!", error);
@@ -11,4 +13,4 @@ const connectDB = async () => {
   }
 };
 
-export default connectDB
+export default connectDB;

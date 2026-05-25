@@ -9,14 +9,6 @@ import { Comment } from "../models/comment.model.js";
 import { WatchHistory } from "../models/watchHistory.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 
-// where i should use Redis?
-
-// 1. profile fetch
-// 2. channel stats - Done
-// 4. channels subscribed - Done
-// 5. watchHistory - Done
-// 6. getAllVideos - Done
-
 const watchVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 

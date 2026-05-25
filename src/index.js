@@ -3,7 +3,9 @@ import connectDB from "../db/connection.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { connectRedis } from "../services/redis.service.js";
 
-const port = process.env.PORT || 3000;
+import config from "../config/config.js";
+
+const port = config.PORT || 3000;
 
 (async () => {
   try {
