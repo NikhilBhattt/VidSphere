@@ -10,8 +10,7 @@ const port = config.PORT || 3000;
 (async () => {
   try {
     // Connect to database and Redis
-    // await Promise.all([connectDB(), connectRedis()]);
-    await connectDB();
+    await Promise.all([connectDB(), connectRedis()]);
 
     // Start the server
     app.listen(port, () => {
