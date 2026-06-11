@@ -4,28 +4,24 @@ import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { Video } from "../models/video.model.js";
+import { client } from "../services/redis.service.js"; // Bug fix: was missing
 
 const toggleVideoLike = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
-  //TODO: toggle like on video
 
   if (!mongoose.isValidObjectId(videoId)) {
-    return res.status(404).json(new ApiError(404, "Invalid Video Id"));
+    return res.status(400).json(new ApiError(400, "Invalid Video Id"));
   }
-
-  // if Liked already -> delete like document
 
   const isVideoLiked = await Like.findOne({ videoId, likedBy: req.user._id });
 
   if (isVideoLiked) {
-    // Video liked!
     await Like.deleteOne({ _id: isVideoLiked._id });
     return res
       .status(200)
       .json(new ApiResponse(200, {}, "Like removed successfully"));
   }
 
-  // if not Liked -> create like document
   await Like.create({ videoId, likedBy: req.user._id });
   return res
     .status(200)
@@ -55,7 +51,7 @@ const getLikedVideos = asyncHandler(async (req, res) => {
   const [likedVideos, totalLikedVideos] = await Promise.all([
     Like.find({ likedBy: req.user._id })
       .skip(skip)
-      .limit(limit)
+      .limit(parseInt(limit))
       .populate(
         "videoId",
         "videoFile thumbnail owner title description views duration",
@@ -70,11 +66,11 @@ const getLikedVideos = asyncHandler(async (req, res) => {
       page: parseInt(page),
       limit: parseInt(limit),
       total: totalLikedVideos,
-      totalPages: Math.ceil(totalLikedVideos / limit),
+      totalPages: Math.ceil(totalLikedVideos / parseInt(limit)),
     },
   };
 
-  await client.set(cacheKey, JSON.stringify(data), { EX: 120 }); // Cache for 2 minutes
+  await client.set(cacheKey, JSON.stringify(data), { EX: 120 });
 
   return res
     .status(200)

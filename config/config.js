@@ -4,7 +4,7 @@ dotenv.config();
 const config = {
   port: process.env.PORT || 3000,
   
-  MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/myapp",
+  MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/vidsphere",
   
   REDIS_URL: process.env.REDIS_URL || "redis://localhost:6379",
   

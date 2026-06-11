@@ -8,12 +8,13 @@ import { Like } from "../models/like.model.js";
 import { Comment } from "../models/comment.model.js";
 import { WatchHistory } from "../models/watchHistory.model.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
+import { client } from "../services/redis.service.js";
 
 const watchVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
   if (!mongoose.isValidObjectId(videoId)) {
-    return res.status(404).json(new ApiError(404, "Invalid Video Id"));
+    return res.status(400).json(new ApiError(400, "Invalid Video Id"));
   }
 
   const video = await Video.findById(videoId);
@@ -22,25 +23,29 @@ const watchVideo = asyncHandler(async (req, res) => {
     return res.status(404).json(new ApiError(404, "Video not found!"));
   }
 
-  await Video.updateOne({ _id: videoId }, { $inc: { view: 1 } });
+  // Bug fix: field was "view" but schema defines "views"
+  await Video.updateOne({ _id: videoId }, { $inc: { views: 1 } });
 
-  await WatchHistory.findByIdAndUpdate(
-    req.user._id,
+  await WatchHistory.findOneAndUpdate(
+    { userId: req.user._id },
     { $addToSet: { videos: videoId } },
     { upsert: true, new: true },
   );
+
   return res
     .status(200)
     .json(new ApiResponse(200, {}, "User started watching"));
 });
 
 const getAllVideos = asyncHandler(async (req, res) => {
-  // get videos of a channel with pagination
-
   const { channelId } = req.params;
   const { page = 1, limit = 10 } = req.query;
 
-  const skip = (page - 1) * limit;
+  if (!mongoose.isValidObjectId(channelId)) {
+    return res.status(400).json(new ApiError(400, "Invalid Channel Id"));
+  }
+
+  const skip = (parseInt(page) - 1) * parseInt(limit);
 
   const cacheKey = `channelVideos:${channelId}:page:${page}:limit:${limit}`;
 
@@ -58,26 +63,16 @@ const getAllVideos = asyncHandler(async (req, res) => {
       );
   }
 
-  const result = await Promise.all([
+  const [allVideos, totalVideos] = await Promise.all([
     Video.aggregate([
       {
         $match: { owner: new mongoose.Types.ObjectId(channelId) },
       },
-      {
-        $skip: skip,
-      },
-      {
-        $limit: limit,
-      },
+      { $skip: skip },
+      { $limit: parseInt(limit) },
     ]),
     Video.countDocuments({ owner: new mongoose.Types.ObjectId(channelId) }),
   ]);
-
-  if (result.length === 0) {
-    return res.status(404).json(new ApiError(404, "No Videos found"));
-  }
-
-  const [allVideos, totalVideos] = result;
 
   const data = {
     allVideos,
@@ -85,11 +80,11 @@ const getAllVideos = asyncHandler(async (req, res) => {
     paginate: {
       page: parseInt(page),
       limit: parseInt(limit),
-      totalPages: Math.ceil(totalVideos / limit),
+      totalPages: Math.ceil(totalVideos / parseInt(limit)),
     },
   };
 
-  await client.set(cacheKey, JSON.stringify(data), { EX: 120 }); // Cache for 2 minutes
+  await client.set(cacheKey, JSON.stringify(data), { EX: 120 });
 
   return res
     .status(200)
@@ -98,7 +93,7 @@ const getAllVideos = asyncHandler(async (req, res) => {
 
 const publishAVideo = asyncHandler(async (req, res) => {
   const { title, description } = req.body;
-  const videoFile = req.file; // Assuming multer middleware is used for file upload
+  const videoFile = req.file;
 
   if (!title || !description) {
     return res
@@ -140,33 +135,88 @@ const publishAVideo = asyncHandler(async (req, res) => {
 const getVideoById = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
-  if (mongoose.isValidObjectId(videoId)) {
-    return res.status(404).json(new ApiError(404, "Video not found!"));
+  // Bug fix: condition was inverted (was returning error when ID IS valid)
+  if (!mongoose.isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid Video Id!"));
   }
 
   const video = await Video.findById(videoId).lean();
+
   if (!video) {
-    return new ApiError(404, "Video Not Found!");
+    // Bug fix: was returning ApiError/ApiResponse without res.status().json()
+    return res.status(404).json(new ApiError(404, "Video Not Found!"));
   }
-  return new ApiResponse(200, video, "Video found!");
+
+  return res.status(200).json(new ApiResponse(200, video, "Video found!"));
 });
 
 const updateVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
-  //TODO: update video details like title, description, thumbnail
+
+  if (!mongoose.isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid Video Id"));
+  }
+
+  const video = await Video.findById(videoId);
+
+  if (!video) {
+    return res.status(404).json(new ApiError(404, "Video not found!"));
+  }
+
+  if (video.owner.toString() !== req.user._id.toString()) {
+    return res
+      .status(403)
+      .json(new ApiError(403, "You are not authorized to update this video!"));
+  }
+
+  const { title, description } = req.body;
+  const thumbnailFile = req.file;
+
+  if (title) video.title = title;
+  if (description) video.description = description;
+
+  if (thumbnailFile) {
+    const uploadResponse = await uploadOnCloudinary(thumbnailFile.path);
+    if (!uploadResponse) {
+      return res
+        .status(500)
+        .json(new ApiError(500, "Failed to upload thumbnail"));
+    }
+    video.thumbnail = uploadResponse.secure_url;
+  }
+
+  await video.save();
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, video, "Video updated successfully"));
 });
 
 const deleteVideo = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
-  if (mongoose.isValidObjectId(videoId)) {
+  // Bug fix: condition was inverted
+  if (!mongoose.isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid Video Id"));
+  }
+
+  const video = await Video.findById(videoId);
+
+  if (!video) {
     return res.status(404).json(new ApiError(404, "Video not found!"));
   }
 
+  if (video.owner.toString() !== req.user._id.toString()) {
+    return res
+      .status(403)
+      .json(new ApiError(403, "You are not authorized to delete this video!"));
+  }
+
+  // Bug fix: mongoose.Types.ObjectId() → new mongoose.Types.ObjectId()
   await Promise.all([
-    Video.deleteOne({ _id: mongoose.Types.ObjectId(videoId) }),
-    Like.deleteMany({ videoId: mongoose.Types.ObjectId(videoId) }),
-    Comment.deleteMany({ videoId: mongoose.Types.ObjectId(videoId) }),
+    Video.deleteOne({ _id: new mongoose.Types.ObjectId(videoId) }),
+    Like.deleteMany({ videoId: new mongoose.Types.ObjectId(videoId) }),
+    Comment.deleteMany({ videoId: new mongoose.Types.ObjectId(videoId) }),
   ]);
 
   return res.status(200).json(new ApiResponse(200, {}, "Video deleted!"));
@@ -175,13 +225,35 @@ const deleteVideo = asyncHandler(async (req, res) => {
 const togglePublishStatus = asyncHandler(async (req, res) => {
   const { videoId } = req.params;
 
-  await Video.findByIdAndUpdate(videoId, {
-    $set: { isPublished: { $eq: ["$isPublished", false] } },
-  });
-  return new ApiResponse(200, {}, "Successfully Updated!");
+  if (!mongoose.isValidObjectId(videoId)) {
+    return res.status(400).json(new ApiError(400, "Invalid Video Id"));
+  }
+
+  const video = await Video.findById(videoId);
+
+  if (!video) {
+    return res.status(404).json(new ApiError(404, "Video not found!"));
+  }
+
+  if (video.owner.toString() !== req.user._id.toString()) {
+    return res
+      .status(403)
+      .json(new ApiError(403, "Not authorized to update this video!"));
+  }
+
+  // Bug fix: $set with aggregation expression doesn't work in findByIdAndUpdate this way
+  // Use actual boolean negation instead
+  video.isPublished = !video.isPublished;
+  await video.save();
+
+  // Bug fix: was returning ApiResponse without res.status().json()
+  return res
+    .status(200)
+    .json(new ApiResponse(200, { isPublished: video.isPublished }, "Successfully Updated!"));
 });
 
 export {
+  watchVideo,
   getAllVideos,
   publishAVideo,
   getVideoById,

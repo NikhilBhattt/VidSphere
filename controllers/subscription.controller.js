@@ -4,6 +4,7 @@ import { Subscription } from "../models/subscription.model.js";
 import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { asyncHandler } from "../utils/asyncHandler.js";
+import { client } from "../services/redis.service.js";
 
 const toggleSubscription = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
@@ -12,7 +13,8 @@ const toggleSubscription = asyncHandler(async (req, res) => {
     return res.status(400).json(new ApiError(400, "Invalid Channel ID"));
   }
 
-  client.del(`subscribedChannels:${req.user._id}`); // Invalidate cache
+  // Bug fix: client was not imported
+  await client.del(`subscribedChannels:${req.user._id}`);
 
   const existingSubscription = await Subscription.findOne({
     subscriber: req.user._id,
@@ -34,7 +36,6 @@ const toggleSubscription = asyncHandler(async (req, res) => {
   }
 });
 
-// controller to return subscriber list of a channel
 const getUserChannelSubscribers = asyncHandler(async (req, res) => {
   const { channelId } = req.params;
   const { page = 1, limit = 10 } = req.query;
@@ -49,7 +50,6 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     },
     {
       $facet: {
-        // pipeline 1 -> fetch paginate subscriber
         list: [
           {
             $lookup: {
@@ -73,14 +73,16 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
           { $skip: (parseInt(page) - 1) * parseInt(limit) },
           { $limit: parseInt(limit) },
         ],
-        // pipeline 2 -> get total count for frontend UI
         totalCount: [{ $count: "count" }],
       },
     },
   ]);
 
-  if (subscriberData.length === 0) {
-    return res.status(204).json(new ApiError(204, "No Subscribers found!"));
+  // Bug fix: was using undefined variable "subscriberData" (missing "s")
+  if (!subscribersData.length || subscribersData[0].list.length === 0) {
+    return res
+      .status(204)
+      .json(new ApiResponse(204, [], "No Subscribers found!"));
   }
 
   const result = {
@@ -95,7 +97,6 @@ const getUserChannelSubscribers = asyncHandler(async (req, res) => {
     .json(new ApiResponse(200, result, "Subscribers Fetched!"));
 });
 
-// controller to return channel list to which user has subscribed
 const getSubscribedChannels = asyncHandler(async (req, res) => {
   const cacheKey = `subscribedChannels:${req.user._id}`;
 
@@ -136,12 +137,12 @@ const getSubscribedChannels = asyncHandler(async (req, res) => {
   ]);
 
   if (subscribedToChannels.length === 0) {
-    return res.status(204).json(new ApiError(204, "Data not found!"));
+    return res.status(204).json(new ApiResponse(204, [], "Data not found!"));
   }
 
   const data = subscribedToChannels[0].subscribedToChannelsList.flat();
 
-  await client.set(cacheKey, JSON.stringify(data), { EX: 300 }); // Cache for 5 minutes
+  await client.set(cacheKey, JSON.stringify(data), { EX: 300 });
 
   return res
     .status(200)

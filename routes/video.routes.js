@@ -6,19 +6,22 @@ import {
   publishAVideo,
   togglePublishStatus,
   updateVideo,
+  watchVideo,
 } from "../controllers/video.controller.js";
 import verifyJWT from "../middlewares/auth.middleware.js";
 import upload from "../middlewares/multer.middleware.js";
 
 const router = Router();
 
-router.get("/videos", verifyJWT, getAllVideos);
+router.get("/:channelId/videos", verifyJWT, getAllVideos);
 
 router.post("/video", verifyJWT, upload.single("video"), publishAVideo);
 
+router.post("/:videoId/watch", verifyJWT, watchVideo);
+
 router.get("/:videoId", verifyJWT, getVideoById);
 
-router.put("/:videoId", verifyJWT, updateVideo);
+router.put("/:videoId", verifyJWT, upload.single("thumbnail"), updateVideo);
 
 router.delete("/:videoId", verifyJWT, deleteVideo);
 

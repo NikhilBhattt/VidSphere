@@ -6,6 +6,9 @@ const videoSchema = new Schema({
     type: String,
     required: [true, "Video File is required"],
   },
+  thumbnail: {
+    type: String,
+  },
   owner: {
     type: Schema.Types.ObjectId,
     ref: "User",

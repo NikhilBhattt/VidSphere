@@ -5,21 +5,18 @@ import ApiError from "../utils/ApiError.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import uploadOnCloudinary from "../utils/cloudinary.js";
 import { cookiesOption } from "../src/constants.js";
-import mongoose, { Schema } from "mongoose";
+import mongoose from "mongoose";
 import { client } from "../services/redis.service.js";
 
 const registerUser = asyncHandler(async (req, res) => {
-  // get user details
   const { username, fullName, email, password } = req.body;
 
-  // validations
   if (
     [username, fullName, email, password].some((field) => field?.trim() === "")
   ) {
     throw new ApiError(422, "All fields are required!!!");
   }
 
-  // check if already exists
   const existedUser = await User.findOne({
     $or: [{ username }, { email }],
   });
@@ -28,7 +25,6 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(409, "User with username or email already exists!");
   }
 
-  // check for images, avatars
   const avatarLocalPath = req.files?.avatar?.[0]?.path;
   const coverImageLocalPath = req.files?.coverImage?.[0]?.path;
 
@@ -36,15 +32,15 @@ const registerUser = asyncHandler(async (req, res) => {
     throw new ApiError(422, "Avatar is required!");
   }
 
-  // upload them to cloudinary
   const avatar = await uploadOnCloudinary(avatarLocalPath);
-  const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+  const coverImage = coverImageLocalPath
+    ? await uploadOnCloudinary(coverImageLocalPath)
+    : null;
 
   if (!avatar) {
     throw new ApiError(400, "Avatar is required!");
   }
 
-  // create user object
   const user = await User.create({
     username,
     fullName,
@@ -54,17 +50,14 @@ const registerUser = asyncHandler(async (req, res) => {
     coverImage: coverImage?.secure_url || "",
   });
 
-  // remove password & refreshToken field from response
   const createdUser = await User.findOne({ _id: user._id }).select(
     "-password -refreshToken",
   );
 
-  // check for user creation
   if (!createdUser) {
-    throw new ApiError(400, "Somethin went wrong while registering the user");
+    throw new ApiError(400, "Something went wrong while registering the user");
   }
 
-  // return response
   res
     .status(201)
     .json(new ApiResponse(200, createdUser, "User registered successfully"));
@@ -73,7 +66,7 @@ const registerUser = asyncHandler(async (req, res) => {
 const loginUser = asyncHandler(async (req, res) => {
   const { field, password } = req.body;
 
-  if ([field, password].some((f) => f?.trim() === "")) {
+  if ([field, password].some((f) => !f || f?.trim() === "")) {
     throw new ApiError(400, "Both fields are required!!!");
   }
 
@@ -108,11 +101,7 @@ const loginUser = asyncHandler(async (req, res) => {
     .json(
       new ApiResponse(
         200,
-        {
-          user: loggedInUser,
-          accessToken,
-          refreshToken,
-        },
+        { user: loggedInUser, accessToken, refreshToken },
         "User logged in successfully",
       ),
     );
@@ -140,7 +129,7 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
 
   const user = await User.findById(req.user._id).select("-password");
 
-  if (user.refreshToken != incomingRefreshToken) {
+  if (user.refreshToken !== incomingRefreshToken) {
     throw new ApiError(400, "Refresh Token is Expired");
   }
 
@@ -161,7 +150,7 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
     throw new ApiError(422, "All fields are required!");
   }
 
-  if (oldPassword.trim() == newPassword.trim()) {
+  if (oldPassword.trim() === newPassword.trim()) {
     throw new ApiError(400, "Old password cannot be new password!");
   }
 
@@ -197,11 +186,7 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
   const user = await User.findByIdAndUpdate(
     req.user._id,
     {
-      $set: {
-        username,
-        fullName,
-        email,
-      },
+      $set: { username, fullName, email },
     },
     { returnDocument: "after" },
   ).select("-password -refreshToken");
@@ -257,9 +242,9 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
 
 const getUserChannelProfile = asyncHandler(async (req, res) => {
   const { username } = req.params;
-
-  if (!mongoose.isValidObjectId(username)) {
-    return res.status(404).json(new ApiError(404, "Username is missing!"));
+  
+  if (!username?.trim()) {
+    return res.status(400).json(new ApiError(400, "Username is missing!"));
   }
 
   const cacheKey = `channel_profile:${username.toLowerCase()}`;
@@ -289,9 +274,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         pipeline: [
           {
             $match: {
-              $expr: {
-                $eq: ["$channel", "$$channelId"],
-              },
+              $expr: { $eq: ["$channel", "$$channelId"] },
             },
           },
           { $count: "count" },
@@ -306,9 +289,7 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
         pipeline: [
           {
             $match: {
-              $expr: {
-                $eq: ["$$userId", "$subscriber"],
-              },
+              $expr: { $eq: ["$$userId", "$subscriber"] },
             },
           },
           { $count: "count" },
@@ -319,10 +300,10 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
     {
       $addFields: {
         subscribersCount: {
-          $size: { $ifNull: ["$subscribers", []] },
+          $ifNull: [{ $arrayElemAt: ["$subscribers.count", 0] }, 0],
         },
         subscribedToCount: {
-          $size: "$subscribedTo",
+          $ifNull: [{ $arrayElemAt: ["$subscribedTo.count", 0] }, 0],
         },
         isSubscribed: {
           $cond: {
@@ -348,12 +329,12 @@ const getUserChannelProfile = asyncHandler(async (req, res) => {
   ]);
 
   if (result.length === 0) {
-    return res.status(404).json(new ApiError(404, "Channel doesn't exists!"));
+    return res.status(404).json(new ApiError(404, "Channel doesn't exist!"));
   }
 
   const channel = result[0];
 
-  await client.set(cacheKey, JSON.stringify(channel), { EX: 900 }); // Cache for 15 minutes
+  await client.set(cacheKey, JSON.stringify(channel), { EX: 900 });
 
   return res
     .status(200)
@@ -385,17 +366,16 @@ const getWatchHistory = asyncHandler(async (req, res) => {
     {
       $lookup: {
         from: "videos",
-        localField: "videos.videoId",
+        localField: "videos",
         foreignField: "_id",
         as: "videoDetails",
       },
     },
+    { $unwind: { path: "$videoDetails", preserveNullAndEmptyArrays: true } },
     {
       $group: {
         _id: "$userId",
-        watchedVideos: {
-          $push: "$videoDetails",
-        },
+        watchedVideos: { $push: "$videoDetails" },
       },
     },
     {
@@ -407,10 +387,10 @@ const getWatchHistory = asyncHandler(async (req, res) => {
   ]);
 
   if (!watchHistory) {
-    throw new ApiError(404, "Data not found!");
+    return res.status(404).json(new ApiError(404, "No watch history found!"));
   }
 
-  await client.set(cacheKey, JSON.stringify(watchHistory), { EX: 600 }); // Cache for 10 minutes
+  await client.set(cacheKey, JSON.stringify(watchHistory), { EX: 600 });
 
   return res
     .status(200)
